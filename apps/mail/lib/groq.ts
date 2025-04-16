@@ -51,38 +51,24 @@ export const groqEmbeddingSchema = z.object({
 export type GroqChatCompletion = z.infer<typeof groqChatCompletionSchema>;
 export type GroqEmbedding = z.infer<typeof groqEmbeddingSchema>;
 
-// Define available Groq models
-export const GROQ_MODELS = {
-  LLAMA_8B: 'llama3-8b-8192',
-  LLAMA_70B: 'llama3-70b-8192',
-  MIXTRAL: 'mixtral-8x7b-32768',
-  GEMMA: 'gemma-7b-it'
-} as const;
-
-// Map OpenAI models to Groq equivalents
-const MODEL_MAPPING: Record<string, string> = {
-  'gpt-4o-mini': GROQ_MODELS.LLAMA_8B,
-  'gpt-3.5-turbo': GROQ_MODELS.LLAMA_8B,
-  'gpt-4': GROQ_MODELS.LLAMA_70B,
-  'gpt-4-turbo': GROQ_MODELS.LLAMA_70B
-};
-
-// Define available OpenAI models for embeddings
-export const EMBEDDING_MODELS = {
-  SMALL: 'text-embedding-3-small',
-  LARGE: 'text-embedding-3-large',
-} as const;
-
-// Default embedding model
-const DEFAULT_EMBEDDING_MODEL = EMBEDDING_MODELS.SMALL;
-
 /**
  * Creates embeddings for text input using OpenAI's embedding API
  */
-export async function createEmbedding(text: string, model: string = DEFAULT_EMBEDDING_MODEL) {
+export async function createEmbedding(text: string) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key is not configured');
   }
+
+  if (!process.env.EMBEDDING_MODEL) {
+    throw new Error('Embedding model is not configured');
+  }
+
+  if (!process.env.EMBEDDING_MODEL_DIMENSIONS) {
+    throw new Error('Embedding model dimensions is not configured');
+  }
+
+  const model = process.env.EMBEDDING_MODEL;
+  const dimensions = +process.env.EMBEDDING_MODEL_DIMENSIONS;
 
   if (!text || text.trim() === '') {
     throw new Error('Empty text cannot be embedded');
@@ -93,7 +79,9 @@ export async function createEmbedding(text: string, model: string = DEFAULT_EMBE
     const embeddings = new OpenAIEmbeddings({
       openAIApiKey: process.env.OPENAI_API_KEY,
       modelName: model,
-      dimensions: model === EMBEDDING_MODELS.SMALL ? 1536 : 3072 // Set dimensions based on model
+      dimensions: dimensions,
+    }, {
+      basePath: process.env.OPENAI_API_BASE_URL,
     });
 
     // Get the embedding for the text
@@ -109,16 +97,29 @@ export async function createEmbedding(text: string, model: string = DEFAULT_EMBE
 /**
  * Creates embeddings for multiple text inputs
  */
-export async function createEmbeddings(texts: Record<string, string>, model: string = DEFAULT_EMBEDDING_MODEL) {
+export async function createEmbeddings(texts: Record<string, string>) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key is not configured');
   }
+
+  if (!process.env.EMBEDDING_MODEL) {
+    throw new Error('Embedding model is not configured');
+  }
+
+  if (!process.env.EMBEDDING_MODEL_DIMENSIONS) {
+    throw new Error('Embedding model dimensions is not configured');
+  }
+
+  const model = process.env.EMBEDDING_MODEL;
+  const dimensions = +process.env.EMBEDDING_MODEL_DIMENSIONS;
   
   // Initialize OpenAI Embeddings
   const embeddings = new OpenAIEmbeddings({
     openAIApiKey: process.env.OPENAI_API_KEY,
     modelName: model,
-    dimensions: model === EMBEDDING_MODELS.SMALL ? 1536 : 3072
+    dimensions: dimensions,
+  }, {
+    basePath: process.env.OPENAI_API_BASE_URL,
   });
   
   const embeddingsResult: Record<string, number[]> = {};
@@ -140,7 +141,7 @@ export async function createEmbeddings(texts: Record<string, string>, model: str
 /**
  * Creates embeddings for multiple text inputs in a single API call
  */
-export async function createEmbeddingsBatch(texts: string[], model: string = DEFAULT_EMBEDDING_MODEL): Promise<number[][]> {
+export async function createEmbeddingsBatch(texts: string[]): Promise<number[][]> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key is not configured');
   }
@@ -155,13 +156,26 @@ export async function createEmbeddingsBatch(texts: string[], model: string = DEF
   if (!validTexts.length) {
     return [];
   }
+
+  if (!process.env.EMBEDDING_MODEL) {
+    throw new Error('Embedding model is not configured');
+  }
+
+  if (!process.env.EMBEDDING_MODEL_DIMENSIONS) {
+    throw new Error('Embedding model dimensions is not configured');
+  }
+
+  const model = process.env.EMBEDDING_MODEL;
+  const dimensions = +process.env.EMBEDDING_MODEL_DIMENSIONS;
   
   try {
     // Initialize OpenAI Embeddings
     const embeddings = new OpenAIEmbeddings({
       openAIApiKey: process.env.OPENAI_API_KEY,
       modelName: model,
-      dimensions: model === EMBEDDING_MODELS.SMALL ? 1536 : 3072
+      dimensions: dimensions,
+    }, {
+      basePath: process.env.OPENAI_API_BASE_URL,
     });
 
     // Get embeddings for all texts in a single batch request
@@ -206,11 +220,13 @@ export async function generateCompletions({
   embeddings,
   userName
 }: CompletionsParams) {
-  if (!process.env.GROQ_API_KEY) 
-    throw new Error('Groq API Key is missing');
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OpenAI API Key is missing');
+  }
 
-  // Map OpenAI model names to Groq equivalents if needed
-  const groqModel = MODEL_MAPPING[model] || model;
+  if (!process.env.OPENAI_API_BASE_URL) {
+    throw new Error('OpenAI API Base URL is missing');
+  }
   
   // If we have embeddings, incorporate them into the system prompt
   let enhancedSystemPrompt = systemPrompt || '';
@@ -277,24 +293,32 @@ export async function generateCompletions({
 
   // Prepare the request body with the correct type
   const requestBody: GroqRequestBody = {
-    model: groqModel,
+    model: model,
     messages,
     temperature,
   };
 
+  let url = process.env.OPENAI_API_BASE_URL;
+
+  if (!url.endsWith('/')) {
+    url += '/';
+  }
+
+  url += 'chat/completions';
+
   try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`GROQ API Error: ${response.status} ${response.statusText} - ${errorText}`);
+      throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -313,7 +337,7 @@ export async function generateCompletions({
       return { completion: content };
     }
   } catch (error) {
-    console.error('Groq API Call Error:', error);
+    console.error('API Call Error:', error);
     throw error;
   }
 }

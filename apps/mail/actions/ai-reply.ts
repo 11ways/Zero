@@ -16,8 +16,12 @@ export async function generateAIResponse(
     throw new Error('Unauthorized');
   }
 
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error('Groq API key is not configured');
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OpenAI API key is not configured');
+  }
+
+  if (!process.env.COMPLETION_MODEL_GENERATE_EMAIL_REPLY) {
+    throw new Error('Completion model for generating email replies is not configured');
   }
 
   // Use a more aggressive content reduction approach
@@ -78,7 +82,7 @@ export async function generateAIResponse(
     console.log('Generating AI response with prompt:', prompt);
     // Use direct fetch to the Groq API
     const { completion } = await generateCompletions({
-      model: 'gpt-4o-mini',
+      model: process.env.COMPLETION_MODEL_GENERATE_EMAIL_REPLY,
       systemPrompt: process.env.AI_SYSTEM_PROMPT || systemPrompt,
       prompt,
       temperature: 0.6,

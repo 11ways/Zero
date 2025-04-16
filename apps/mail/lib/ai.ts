@@ -33,8 +33,12 @@ export async function generateEmailContent(
   const session = await auth.api.getSession({ headers: headersList });
 
   try {
-    if (!process.env.GROQ_API_KEY) {
-      throw new Error('Groq API key is not configured');
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OpenAI API key is not configured');
+    }
+
+    if (!process.env.COMPLETION_MODEL_GENERATE_EMAIL_CONTENT) {
+      throw new Error('Completion model for generating email content is not configured');
     }
 
     // Get or initialize conversation
@@ -114,7 +118,7 @@ export async function generateEmailContent(
 
     // Make API call using the ai function
     const { completion } = await generateCompletions({
-      model: 'gpt-4o-mini', // Using Groq's model
+      model: process.env.COMPLETION_MODEL_GENERATE_EMAIL_CONTENT,
       systemPrompt,
       prompt: userMessages + '\n\nUser: ' + prompt,
       temperature: 0.7,
